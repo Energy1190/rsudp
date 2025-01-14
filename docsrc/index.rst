@@ -6,6 +6,8 @@
 | |github|
 | **Continuous sudden motion and visual monitoring of Raspberry Shake data**
 | *by Ian M. Nesbitt and Richard I. Boaz*
+|
+| *Maintained by Raspberry Shake, S.A. for use by the citizen science and seismology-in-school s communities.*
 
 .. |github| raw:: html
 
@@ -103,6 +105,7 @@ The modules available in rsudp are organized by type below.
     c_forward
     c_write
     c_custom
+    c_settings
 
 .. toctree::
     :maxdepth: 2

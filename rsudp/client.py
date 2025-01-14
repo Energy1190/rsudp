@@ -25,6 +25,7 @@ from rsudp.c_telegram import Telegrammer
 from rsudp.c_rsam import RSAM
 from rsudp.c_testing import Testing
 from rsudp.t_testdata import TestData
+from rsudp.c_settings import Settings
 import pkg_resources as pr
 
 
@@ -150,7 +151,8 @@ def run(settings, debug):
 
 	# initialize the central library
 	rs.initRSlib(dport=settings['settings']['port'],
-				 rsstn=settings['settings']['station'])
+				 rsstn=settings['settings']['station'],
+				 settings=settings)
 
 	H.conn_stats(TESTING)
 	if TESTING:
@@ -189,11 +191,28 @@ def run(settings, debug):
 				break
 		cha = settings['plot']['channels']
 		sec = settings['plot']['duration']
+		refresh_interval = settings['plot']['refresh_interval']
 		spec = settings['plot']['spectrogram']
 		full = settings['plot']['fullscreen']
 		kiosk = settings['plot']['kiosk']
 		screencap = settings['plot']['eq_screenshots']
 		alert = settings['alert']['enabled']
+		
+		# Load filter values from .json file
+		filter_waveform = settings['plot']['filter_waveform']
+		filter_spectrogram = settings['plot']['filter_spectrogram']
+		filter_highpass = settings['plot']['filter_highpass']
+		filter_lowpass = settings['plot']['filter_lowpass']
+		filter_corners = settings['plot']['filter_corners']
+		
+		# Spectrogram range variables
+		spectrogram_freq_range = settings['plot']['spectrogram_freq_range']
+		lower_limit = settings['plot']['lower_limit']
+		upper_limit = settings['plot']['upper_limit']
+		
+		# Logarithmic y-axis
+		logarithmic_y_axis = settings['plot']['logarithmic_y_axis']
+		
 		if settings['plot']['deconvolve']:
 			if settings['plot']['units'].upper() in rs.UNITS:
 				deconv = settings['plot']['units'].upper()
@@ -202,9 +221,14 @@ def run(settings, debug):
 		else:
 			deconv = False
 		pq = mk_q()
-		PLOTTER = Plot(cha=cha, seconds=sec, spectrogram=spec,
+		PLOTTER = Plot(cha=cha, refresh_interval=refresh_interval, seconds=sec, spectrogram=spec,
 						fullscreen=full, kiosk=kiosk, deconv=deconv, q=pq,
-						screencap=screencap, alert=alert, testing=TESTING)
+						screencap=screencap, alert=alert, filter_waveform=filter_waveform,
+						filter_spectrogram=filter_spectrogram, filter_highpass=filter_highpass,
+						filter_lowpass=filter_lowpass, filter_corners=filter_corners,
+						spectrogram_freq_range=spectrogram_freq_range,
+						lower_limit=lower_limit, upper_limit=upper_limit, 
+						logarithmic_y_axis=logarithmic_y_axis, testing=TESTING)
 		# no mk_p() here because the plotter must be controlled by the main thread (this one)
 
 	if settings['forward']['enabled']:
@@ -232,6 +256,7 @@ def run(settings, debug):
 		# put settings in namespace
 		sta = settings['alert']['sta']
 		lta = settings['alert']['lta']
+		duration = settings['alert'].get('duration', 0.0)
 		thresh = settings['alert']['threshold']
 		reset = settings['alert']['reset']
 		bp = [settings['alert']['highpass'], settings['alert']['lowpass']]
@@ -246,7 +271,7 @@ def run(settings, debug):
 
 		# set up queue and process
 		q = mk_q()
-		alrt = Alert(sta=sta, lta=lta, thresh=thresh, reset=reset, bp=bp,
+		alrt = Alert(sta=sta, lta=lta, duration=duration, thresh=thresh, reset=reset, bp=bp,
 					 cha=cha, debug=debug, q=q, testing=TESTING,
 					 deconv=deconv)
 		mk_p(alrt)
@@ -401,7 +426,7 @@ settings in %s
 ''' % settings_loc
 
 
-	settings = json.loads(H.default_settings(verbose=False))
+	settings = Settings.default_settings(verbose=False)
 
 	# get arguments
 	try:
@@ -415,9 +440,9 @@ settings in %s
 	if len(opts) == 0:
 		if not os.path.exists(settings_loc):
 			print(COLOR['yellow'] + 'Could not find rsudp settings file, creating one at %s' % settings_loc + COLOR['white'])
-			H.dump_default(settings_loc, H.default_settings())
+			Settings.default_settings().dump(settings_loc)
 		else:
-			settings = H.read_settings(settings_loc)
+			settings = Settings.read_settings(settings_loc)
 
 	for o, a in opts:
 		if o in ('-h', '--help'):
@@ -428,7 +453,7 @@ settings in %s
 			This is only meant to be used by the install script.
 			'''
 			os.makedirs(default_loc, exist_ok=True)
-			H.dump_default(settings_loc, H.default_settings(output_dir='@@DIR@@', verbose=False))
+			Settings.default_settings(output_dir='@@DIR@@', verbose=False).dump(settings_loc)
 			exit(0)
 		if o in ('-d', '--dump='):
 			'''
@@ -436,15 +461,15 @@ settings in %s
 			'''
 			if str(a) in 'default':
 				os.makedirs(default_loc, exist_ok=True)
-				H.dump_default(settings_loc, H.default_settings())
+				Settings.default_settings().dump(settings_loc)
 			else:
-				H.dump_default(os.path.abspath(os.path.expanduser(a)), H.default_settings())
+				Settings.default_settings().dump(os.path.abspath(os.path.expanduser(a)))
 			exit(0)
 		if o in ('-s', 'settings='):
 			'''
 			Start the program with a specific settings file, for example: `-s settings.json`.
 			'''
-			settings = H.read_settings(a)
+			settings = Settings.read_settings(a)
 
 	debug = settings['settings']['debug']
 	if debug:
@@ -505,7 +530,7 @@ default settings and the data file at
 ''' % (TESTFILE)
 
 	test_mode(True)
-	settings = H.default_settings(verbose=False)
+	settings = Settings.default_settings(verbose=False)
 	settings_are_default = True
 	plot = True
 	quiet = False
@@ -546,7 +571,7 @@ default settings and the data file at
 			'''
 			settings_loc = os.path.abspath(os.path.expanduser(a)).replace('\\', '/')
 			if os.path.exists(settings_loc):
-				settings = H.read_settings(settings_loc)
+				settings = Settings.read_settings(settings_loc)
 				settings_are_default = False
 			else:
 				print(COLOR['red'] + 'ERROR: could not find settings file at %s' % (a) + COLOR['white'])
